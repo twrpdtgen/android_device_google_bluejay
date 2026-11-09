@@ -1,0 +1,58 @@
+name: Inspect bluejay device tree
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout device tree
+        uses: actions/checkout@v4
+
+      - name: Collect build configuration
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/bluejay-report"
+
+          {
+            echo "=== Git revision ==="
+            git log -1 --format='%H %s'
+
+            echo
+            echo "=== Files ==="
+            git ls-files
+
+            echo
+            echo "=== Build configuration ==="
+            while IFS= read -r file; do
+              case "$file" in
+                *.mk|*.fstab|*/fstab.*|vendorsetup.sh|*dependencies*)
+                  echo
+                  echo "=== $file ==="
+                  sed -n '1,300p' "$file"
+                  ;;
+              esac
+            done < <(git ls-files)
+
+            echo
+            echo "=== Prebuilt file sizes ==="
+            if [ -d prebuilt ]; then
+              find prebuilt -type f -printf '%p %s bytes'
+            fi
+
+            echo
+            echo "=== Available disk space ==="
+            df -h
+          } 2>&1 | tee "$RUNNER_TEMP/bluejay-report/inspection.txt"
+
+      - name: Upload inspection report
+        uses: actions/upload-artifact@v4
+        with:
+          name: bluejay-tree-inspection
+          path: ${{ runner.temp }}/bluejay-report/inspection.txt
+          if-no-files-found: error
